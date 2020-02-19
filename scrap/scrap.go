@@ -3,8 +3,11 @@ package scrap
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -57,7 +60,8 @@ func Start() {
 	client := GetRestClient()
 	productListURL := "Produto/GetProdutosCategoria?NomeCategoriaURL=%s&PaginaAtual=%d&TamanhoPagina=33"
 	productDetailsURL := "Produto/GetProduto?IdProduto=%s"
-	record := [][]string{
+	productDetails := Product{}
+	records := [][]string{
 		{
 			"sku",
 			"attribute_set_code",
@@ -83,45 +87,66 @@ func Start() {
 	for _, category := range categoryList.Categories {
 		fmt.Println("Processando categoria: " + category.Name)
 
-		ids := []string{}
 		productList := ProductList{}
 		page := 1
 
-		_, err := rest.SetResult(&).Get(fmt.Sprintf(productListURL, category.Name, 1))
-		for p := 1; p <= pages; p++ {
+		for {
+			fmt.Println("Processando página: " + strconv.Itoa(page))
 
+			_, err := client.
+				SetResult(&productList).
+				Get(fmt.Sprintf(productListURL, category.URL, page))
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			for _, row := range list.Produtos {
-				ids = append(ids, row.ID)
-			}
-
-			for _, id := range ids {
-				_, err := rest.SetResult(&details).Get(fmt.Sprintf(productURL, id))
+			for _, product := range productList.Products {
+				_, err := client.
+					SetResult(&productDetails).
+					Get(fmt.Sprintf(productDetailsURL, product.ID))
 				if err != nil {
 					log.Fatal(err)
 				}
 
-				description := strings.ReplaceAll(details.Produto.Descricao, "\n", "<br>")
-				record = append(record, []string{
-					details.Produto.EAN,
+				categoryName := "Default Category/" + category.Name
+				if category.Name != productDetails.Category {
+					categoryName += "/" + productDetails.Category
+				}
+
+				description := strings.ReplaceAll(productDetails.Description, "\n", "<br>")
+
+				records = append(records, []string{
+					productDetails.EAN,
 					"Default",
 					"simple",
-					"Default Category/Acessórios/" + details.Produto.Categoria,
-					details.Produto.Nome,
+					categoryName,
+					productDetails.Name,
 					" ",
 					// "1",
 					// "4",
-					"has_options=0,required_options=0,manufacturer=" + details.Produto.Marca,
+					"has_options=0,required_options=0,manufacturer=" + productDetails.Manufacturer,
 					description,
 				})
 			}
+
+			if (productList.Total / 33) > page {
+				page++
+			} else {
+				break
+			}
+
+			if len(records) >= 5 {
+				break
+			}
 		}
+
+		if len(records) >= 5 {
+			break
+		}
+
 	}
 
-	csvWriter.WriteAll(record)
+	csvWriter.WriteAll(records)
 }
 
 // GetFabricantes ...
@@ -167,21 +192,21 @@ func getCategories() CategoryList {
 
 func downloadFile(filepath string, url string) error {
 
-    // Get the data
-    resp, err := http.Get(url)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
-    // Create the file
-    out, err := os.Create(filepath)
-    if err != nil {
-        return err
-    }
-    defer out.Close()
+	// Create the file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
 
-    // Write the body to file
-    _, err = io.Copy(out, resp.Body)
-    return err
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
