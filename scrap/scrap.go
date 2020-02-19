@@ -8,66 +8,55 @@ import (
 	"strings"
 )
 
-// Fabricantes json content
-type Fabricantes struct {
-	Fabricantes []Fabricante `json:"Fabricantes"`
+// ManufacturerList json content
+type ManufacturerList struct {
+	Manufacturers []Manufacturer `json:"Fabricantes"`
 }
 
-// Fabricante json content
-type Fabricante struct {
-	Nome string `json:"NomeFabricante"`
+// Manufacturer json content
+type Manufacturer struct {
+	Name string `json:"NomeFabricante"`
 }
 
 // ProductList json content
 type ProductList struct {
-	Produtos []Produto `json:"Produtos"`
+	Products []Product `json:"Produtos"`
+	Total    int       `json:"TotalProdutos"`
 }
 
 // ProductDetails json content
 type ProductDetails struct {
-	Produto Produto `json:"Produto"`
+	Product Product `json:"Produto"`
 }
 
-// Produto json content
-type Produto struct {
-	ID            string `json:"IdProduto"`
-	EAN           string `json:"EAN"`
-	Nome          string `json:"NomeProduto"`
-	Marca         string `json:"NomeFabricante"`
-	Categoria     string `json:"NomeCategoria"`
-	Descricao     string `json:"DescricaoCurta"`
-	FotoPrincipal string `json:"FotoPrincipal"`
+// Product json content
+type Product struct {
+	ID           string `json:"IdProduto"`
+	EAN          string `json:"EAN"`
+	Name         string `json:"NomeProduto"`
+	Manufacturer string `json:"NomeFabricante"`
+	Category     string `json:"NomeCategoria"`
+	Description  string `json:"DescricaoCurta"`
+	Picture      string `json:"FotoPrincipal"`
 }
 
-var alf = []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-	"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA", "AB", "AC",
-	"AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK", "AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AU"}
+// CategoryList json content
+type CategoryList struct {
+	Categories []Category `json:"Categorias"`
+}
 
-func getCategories() {
-
+// Category json content
+type Category struct {
+	ID   string `json:"IdCategoria"`
+	Name string `json:"NomeCategoria"`
+	URL  string `json:"NomeCategoriaURL"`
 }
 
 // Start scrap
 func Start() {
-	var list ProductList
-	var details ProductDetails
-
-	categoryURL := "/Produto/GetProdutosCategoria?NomeCategoriaURL=%s&PaginaAtual=%d&TamanhoPagina=%d"
-	productURL := "/Produto/GetProduto?IdProduto=%s"
-	pages := 1
-	categoryName := "acessorios"
-	ids := []string{}
-	rest := GetRestClient()
-
-	csvFile, err := os.OpenFile("products.csv", os.O_RDWR|os.O_CREATE, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer csvFile.Close()
-
-	csvWriter := csv.NewWriter(csvFile)
-	// csvWriter.UseCRLF = true
-
+	client := GetRestClient()
+	productListURL := "Produto/GetProdutosCategoria?NomeCategoriaURL=%s&PaginaAtual=%d&TamanhoPagina=33"
+	productDetailsURL := "Produto/GetProduto?IdProduto=%s"
 	record := [][]string{
 		{
 			"sku",
@@ -83,35 +72,52 @@ func Start() {
 		},
 	}
 
-	for p := 1; p <= pages; p++ {
-		_, err := rest.SetResult(&list).Get(fmt.Sprintf(categoryURL, categoryName, p, pages))
-		if err != nil {
-			log.Fatal(err)
-		}
+	csvFile, err := os.OpenFile("products.csv", os.O_RDWR|os.O_CREATE, os.ModePerm)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer csvFile.Close()
+	csvWriter := csv.NewWriter(csvFile)
 
-		for _, row := range list.Produtos {
-			ids = append(ids, row.ID)
-		}
+	categoryList := getCategories()
+	for _, category := range categoryList.Categories {
+		fmt.Println("Processando categoria: " + category.Name)
 
-		for _, id := range ids {
-			_, err := rest.SetResult(&details).Get(fmt.Sprintf(productURL, id))
+		ids := []string{}
+		productList := ProductList{}
+		page := 1
+
+		_, err := rest.SetResult(&).Get(fmt.Sprintf(productListURL, category.Name, 1))
+		for p := 1; p <= pages; p++ {
+
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			description := strings.ReplaceAll(details.Produto.Descricao, "\n", "<br>")
-			record = append(record, []string{
-				details.Produto.EAN,
-				"Default",
-				"simple",
-				"Default Category/Acessórios/" + details.Produto.Categoria,
-				details.Produto.Nome,
-				" ",
-				// "1",
-				// "4",
-				"has_options=0,required_options=0,manufacturer=" + details.Produto.Marca,
-				description,
-			})
+			for _, row := range list.Produtos {
+				ids = append(ids, row.ID)
+			}
+
+			for _, id := range ids {
+				_, err := rest.SetResult(&details).Get(fmt.Sprintf(productURL, id))
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				description := strings.ReplaceAll(details.Produto.Descricao, "\n", "<br>")
+				record = append(record, []string{
+					details.Produto.EAN,
+					"Default",
+					"simple",
+					"Default Category/Acessórios/" + details.Produto.Categoria,
+					details.Produto.Nome,
+					" ",
+					// "1",
+					// "4",
+					"has_options=0,required_options=0,manufacturer=" + details.Produto.Marca,
+					description,
+				})
+			}
 		}
 	}
 
@@ -120,9 +126,9 @@ func Start() {
 
 // GetFabricantes ...
 func GetFabricantes() {
-	var list Fabricantes
-	var url = "/Fabricante/GetFabricantes"
-	var rest = GetRestClient()
+	list := ManufacturerList{}
+	url := "/Fabricante/GetFabricantes"
+	client := GetRestClient()
 
 	csvFile, err := os.OpenFile("fabricantes.csv", os.O_RDWR|os.O_CREATE, os.ModePerm)
 	if err != nil {
@@ -133,16 +139,49 @@ func GetFabricantes() {
 	csvWriter := csv.NewWriter(csvFile)
 	records := [][]string{}
 
-	_, err = rest.SetResult(&list).Get(url)
+	_, err = client.SetResult(&list).Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for _, f := range list.Fabricantes {
+	for _, f := range list.Manufacturers {
 		records = append(records, []string{
-			f.Nome,
+			f.Name,
 		})
 	}
 
 	csvWriter.WriteAll(records)
+}
+
+func getCategories() CategoryList {
+	list := CategoryList{}
+	client := GetRestClient()
+
+	_, err := client.SetResult(&list).Get("Categoria/GetCategorias")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return list
+}
+
+func downloadFile(filepath string, url string) error {
+
+    // Get the data
+    resp, err := http.Get(url)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    // Create the file
+    out, err := os.Create(filepath)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+
+    // Write the body to file
+    _, err = io.Copy(out, resp.Body)
+    return err
 }
