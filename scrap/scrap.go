@@ -34,13 +34,28 @@ type ProductDetails struct {
 
 // Product json content
 type Product struct {
-	ID           string `json:"IdProduto"`
-	EAN          string `json:"EAN"`
-	Name         string `json:"NomeProduto"`
-	Manufacturer string `json:"NomeFabricante"`
-	Category     string `json:"NomeCategoria"`
-	Description  string `json:"DescricaoCurta"`
-	Picture      string `json:"FotoPrincipal"`
+	ID           string             `json:"IdProduto"`
+	EAN          string             `json:"EAN"`
+	Name         string             `json:"NomeProduto"`
+	Manufacturer string             `json:"NomeFabricante"`
+	Category     string             `json:"NomeCategoria"`
+	Description  string             `json:"DescricaoCurta"`
+	Picture      string             `json:"FotoPrincipal"`
+	Pictures     []ProductPicture   `json:"Fotos"`
+	References   []ProductReference `json:"Referencias"`
+}
+
+// ProductPicture json content
+type ProductPicture struct {
+	Thumbnail string `json:"FotoPequena"`
+	Small     string `json:"FotoMedia"`
+	Base      string `json:"FotoGrande"`
+}
+
+// ProductReference json content
+type ProductReference struct {
+	Description string `json:"Descricao"`
+	Value       string `json:"Valor"`
 }
 
 // CategoryList json content
@@ -60,18 +75,27 @@ func Start() {
 	client := GetRestClient()
 	productListURL := "Produto/GetProdutosCategoria?NomeCategoriaURL=%s&PaginaAtual=%d&TamanhoPagina=33"
 	productDetailsURL := "Produto/GetProduto?IdProduto=%s"
-	productDetails := Product{}
+	productDetails := ProductDetails{}
 	records := [][]string{
 		{
 			"sku",
+			"product_websites",
 			"attribute_set_code",
 			"product_type",
 			"categories",
 			"name",
 			"price",
-			// "product_online",
-			// "visibility",
+			"qty",
+			"meta_title",
+			"meta_keywords",
+			"meta_description",
+			"base_image",
+			"small_image",
+			"thumbnail_image",
+			"additional_images",
 			"additional_attributes",
+			"visibility",
+			"product_online",
 			"description",
 		},
 	}
@@ -108,23 +132,68 @@ func Start() {
 					log.Fatal(err)
 				}
 
-				categoryName := "Default Category/" + category.Name
-				if category.Name != productDetails.Category {
-					categoryName += "/" + productDetails.Category
+				sku := productDetails.Product.EAN
+				for _, row := range productDetails.Product.References {
+					if row.Description == "Código" {
+						sku = row.Value
+					}
 				}
 
-				description := strings.ReplaceAll(productDetails.Description, "\n", "<br>")
+				categoryName := "Default Category/" + category.Name
+				if category.Name != productDetails.Product.Category {
+					categoryName += "/" + productDetails.Product.Category
+				}
+
+				baseImage := productDetails.Product.Picture
+				if baseImage == "" && len(productDetails.Product.Pictures) > 0 {
+					baseImage = productDetails.Product.Pictures[0].Base
+				}
+				smallImage := baseImage
+				thumbnailImage := baseImage
+
+				err = downloadFile(baseImage, "https://www.agis.com.br/Fotos/"+baseImage)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = downloadFile(smallImage, "https://www.agis.com.br/Fotos/"+smallImage)
+				if err != nil {
+					log.Fatal(err)
+				}
+				err = downloadFile(thumbnailImage, "https://www.agis.com.br/Fotos/"+thumbnailImage)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				additionalImage := ""
+				if len(productDetails.Product.Pictures) > 1 {
+					additionalImage = productDetails.Product.Pictures[1].Base
+				}
+				err = downloadFile(additionalImage, "https://www.agis.com.br/Fotos/"+additionalImage)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				description := strings.ReplaceAll(productDetails.Product.Description, "\n", "<br>")
 
 				records = append(records, []string{
-					productDetails.EAN,
+					sku,
+					"base",
 					"Default",
 					"simple",
 					categoryName,
-					productDetails.Name,
-					" ",
-					// "1",
-					// "4",
-					"has_options=0,required_options=0,manufacturer=" + productDetails.Manufacturer,
+					productDetails.Product.Name,
+					"0.00",
+					"0",
+					productDetails.Product.Name,
+					productDetails.Product.Name,
+					"",
+					"/" + baseImage,
+					"/" + smallImage,
+					"/" + thumbnailImage,
+					"/" + additionalImage,
+					"has_options=0,required_options=0,manufacturer=" + productDetails.Product.Manufacturer,
+					"Catálogo, Pesquisa",
+					"1",
 					description,
 				})
 			}
@@ -191,22 +260,30 @@ func getCategories() CategoryList {
 }
 
 func downloadFile(filepath string, url string) error {
+	if filepath != "" {
 
-	// Get the data
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
+		filepath = "./images/" + filepath
+		_, err := os.Stat(filepath)
+		if os.IsNotExist(err) {
+			// Get the data
+			resp, err := http.Get(url)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+
+			// Create the file
+			out, err := os.Create(filepath)
+			if err != nil {
+				return err
+			}
+			defer out.Close()
+
+			// Write the body to file
+			_, err = io.Copy(out, resp.Body)
+			return err
+		}
 	}
-	defer resp.Body.Close()
 
-	// Create the file
-	out, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
-	return err
+	return nil
 }
